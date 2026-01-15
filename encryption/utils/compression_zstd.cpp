@@ -1,7 +1,7 @@
 #include "compression.h"
 
 #ifdef TROY_ZSTD
-
+#include <cstdint>
 #include <zstd.h>
 
 namespace troy::utils::compression::zstd {
