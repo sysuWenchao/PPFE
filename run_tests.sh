@@ -39,6 +39,7 @@ NETWORK_CONFIGS=(
 
 # Check if running as root
 check_root() {
+    if [ "$EUID" -ne 0 ]; then
         echo -e "${RED}Error: This script requires root privileges to configure the network environment${NC}"
         echo "Please use: sudo ./run_tests.sh"
         exit 1
