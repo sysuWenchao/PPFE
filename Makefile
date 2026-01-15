@@ -7,6 +7,9 @@ INCLUDE := src/include
 TROY_INCLUDE := encryption# troy.h 所在目录
 TROY_LIB := encryption/libtroy.so
 
+# Ensure build directory exists
+$(shell mkdir -p build)
+
 # CUDA runtime 路径
 CUDA_INCLUDE := -I/usr/local/cuda/include
 CUDA_LIB := -L/usr/local/cuda/lib64 -lcudart
