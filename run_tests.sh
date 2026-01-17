@@ -234,8 +234,8 @@ run_all_tests() {
             
             local test_name="${network_name}_log2db${dbsize}"
             local output_file="${RESULTS_DIR}/${test_name}.csv"
-            local srv_log="${RESULTS_DIR}/${test_name}_srv.log"
-            local cli_log="${RESULTS_DIR}/${test_name}_cli.log"
+            local srv_log="${RESULTS_DIR}/${test_name}_server.log"
+            local cli_log="${RESULTS_DIR}/${test_name}_client.log"
 
             setup_network_in_client "$delay" "$rate"
             if start_server "$dbsize" "$ENTRY_SIZE" "$PORT" "$srv_log"; then
