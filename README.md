@@ -26,10 +26,10 @@ make
 ```
 
 This will generate the following binaries in the `build/` directory:
-- `build/PPFE_server`: The standalone server executable.
-- `build/PPFE_client`: The standalone client executable.
-- `build/PPFE`: Unified test executable.
-- `build/PPFE_simlargeserver`: Version simulating a large server database.
+- `build/s3pir_server`: The standalone server executable.
+- `build/s3pir_client`: The standalone client executable.
+- `build/s3pir`: Unified test executable.
+- `build/s3pir_simlargeserver`: Version simulating a large server database.
 
 To clean the build:
 ```bash
@@ -42,11 +42,11 @@ make clean
 
 #### Start the Server:
 ```bash
-./build/PPFE_server <Log2DBSize> <EntrySize> <Port>
+./build/s3pir_server <Log2DBSize> <EntrySize> <Port>
 ```
 Example:
 ```bash
-./build/PPFE_server 16 8 8080
+./build/s3pir_server 16 8 8080
 ```
 - `Log2DBSize`: Log base 2 of the number of entries (e.g., 16 for 65,536 entries).
 - `EntrySize`: Size of each database entry in bytes (must be a multiple of 8).
@@ -54,11 +54,11 @@ Example:
 
 #### Run the Client:
 ```bash
-./build/PPFE_client <ServerIP> <Port> <OutputFile>
+./build/s3pir_client <ServerIP> <Port> <OutputFile>
 ```
 Example:
 ```bash
-./build/PPFE_client 127.0.0.1 8080 results.csv
+./build/s3pir_client 127.0.0.1 8080 results.csv
 ```
 - `ServerIP`: IP address of the PPFE server.
 - `Port`: Target port on the server.
