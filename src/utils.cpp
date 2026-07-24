@@ -1,4 +1,5 @@
 #include "utils.h"
+<<<<<<< HEAD
 #include <cmath>
 #include <limits>
 #include <stdexcept>
@@ -61,6 +62,8 @@ int64_t SampleAnswerNoise()
 	return static_cast<int64_t>(
 		std::llround(standard_normal * ANSWER_NOISE_SIGMA));
 }
+=======
+>>>>>>> origin/main
 
 void getEntryFromDB(uint64_t* DB, uint32_t index, uint64_t *result, uint32_t EntrySize)
 {
@@ -86,7 +89,14 @@ void initDatabase(uint64_t** DB, uint64_t kLogDBSize, uint64_t kEntrySize, uint6
 	uint64_t DBSizeInUint64 = ((uint64_t) kEntrySize / 8) << kLogDBSize;
 #endif	
 	*DB = new uint64_t [DBSizeInUint64];
+<<<<<<< HEAD
 	for (uint64_t i = 0; i < DBSizeInUint64; i++) {
+=======
+	/*ifstream frand("/dev/urandom"); 
+	frand.read((char*) *DB, DBSizeInUint64);
+	frand.close();*/
+	 for (uint64_t i = 0; i < DBSizeInUint64; i++) {
+>>>>>>> origin/main
         (*DB)[i] = (999999999999+i) % plainModulus;
     }
 }
@@ -123,4 +133,8 @@ uint32_t FindCutoff(uint32_t *prfVals, uint32_t PartNum) {
 		if (prfVals[k] == cutoff) return 0;
 	}
 	return cutoff;
+<<<<<<< HEAD
 }
+=======
+}
+>>>>>>> origin/main

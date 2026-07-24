@@ -251,7 +251,10 @@ int main(int argc, char *argv[])
     uint64_t *Response_b1 = new uint64_t[B];
 
     int queryCount = 0;
+<<<<<<< HEAD
     int64_t totalOnlineServerComputeUs = 0;
+=======
+>>>>>>> origin/main
 
     while (true)
     {
@@ -286,6 +289,10 @@ int main(int argc, char *argv[])
             }
 
             // Process all batch queries
+<<<<<<< HEAD
+=======
+            auto online_server_compute_start = chrono::high_resolution_clock::now();
+>>>>>>> origin/main
             vector<NetworkHelper::BatchResponse> batchResponses(batchSize);
             for (uint32_t i = 0; i < batchSize; i++)
             {
@@ -304,14 +311,20 @@ int main(int argc, char *argv[])
                 {
                     bvec_array[j] = bvec_bool[j];
                 }
+<<<<<<< HEAD
                 auto online_server_compute_start = chrono::high_resolution_clock::now();
+=======
+>>>>>>> origin/main
                 server.onlineQuery(bvec_array, batchQueries[i].Svec.data(),
                                    batchResponses[i].Response_b0.data(),
                                    batchResponses[i].Response_b1.data(),
                                    batchQueries[i].ciphertext, encoder);
+<<<<<<< HEAD
                 auto online_server_compute_end = chrono::high_resolution_clock::now();
                 totalOnlineServerComputeUs += chrono::duration_cast<chrono::microseconds>(
                     online_server_compute_end - online_server_compute_start).count();
+=======
+>>>>>>> origin/main
 
                 // Send b0/b1 via OT persistent connection (one connection, multiple OTs)
                 // Note: b0/b1 here are uint64 in ciphertext modulus q domain (output after scaling/removal/noise addition in server.cpp)
@@ -319,6 +332,13 @@ int main(int argc, char *argv[])
 
                 delete[] bvec_array; // Free memory
             }
+<<<<<<< HEAD
+=======
+            auto online_server_compute_end = chrono::high_resolution_clock::now();
+            auto online_server_compute_time = chrono::duration_cast<chrono::microseconds>(online_server_compute_end - online_server_compute_start);
+            // cout << "[Server] Online server compute time: " << online_server_compute_time.count() / 1000.0 << " ms (batch " << batchSize << " )" << endl;
+
+>>>>>>> origin/main
             // Send batch responses
             // Variables sent include:
             // - batchResponses: vector<BatchResponse> - Batch response data, each BatchResponse contains:
@@ -357,11 +377,15 @@ int main(int argc, char *argv[])
             }
 
             // Process query
+<<<<<<< HEAD
             auto online_server_compute_start = chrono::high_resolution_clock::now();
             server.onlineQuery(bvec, Svec, Response_b0, Response_b1, queryCiphertext, encoder);
             auto online_server_compute_end = chrono::high_resolution_clock::now();
             totalOnlineServerComputeUs += chrono::duration_cast<chrono::microseconds>(
                 online_server_compute_end - online_server_compute_start).count();
+=======
+            server.onlineQuery(bvec, Svec, Response_b0, Response_b1, queryCiphertext, encoder);
+>>>>>>> origin/main
 
             // Send response
             if (!NetworkHelper::sendUint64Array(clientSocket, Response_b0, B))
@@ -385,6 +409,7 @@ int main(int argc, char *argv[])
     }
 
     cout << "[Server] Total queries processed: " << queryCount << endl;
+<<<<<<< HEAD
     if (queryCount > 0)
     {
         cout << "[Server] Online server computation total: "
@@ -393,6 +418,8 @@ int main(int argc, char *argv[])
              << totalOnlineServerComputeUs / 1000.0 / queryCount
              << " ms/query" << endl;
     }
+=======
+>>>>>>> origin/main
 
     // Cleanup
     delete[] bvec;

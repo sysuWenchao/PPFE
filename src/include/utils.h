@@ -6,6 +6,7 @@
 #include "cryptopp/files.h"
 #include "cryptopp/osrng.h"
 #include <cassert>
+<<<<<<< HEAD
 #include <cstdint>
 #include <string>
 
@@ -26,6 +27,15 @@ uint64_t SecureRandomUint64Below(uint64_t upper_bound);
 bool SecureRandomBit();
 int64_t SampleAnswerNoise();
 
+=======
+
+#define AES_KEY "1234567812345678"
+#define LAMBDA 30
+
+using namespace std;
+using namespace CryptoPP;
+
+>>>>>>> origin/main
 // PRF across partition ID. 
 // A single PRF call generates the values of v for 4 consecutive partition numbers for a single hintID and the values of r for 8 consecutive partition numbers for a single hintID, packed in 128 bits.
 class PRFPartitionID{
@@ -114,4 +124,8 @@ void getEntryFromDB(uint64_t* DB, uint32_t index, uint64_t *result, uint32_t Ent
 void initDatabase(uint64_t** DB, uint64_t kLogDBSize, uint64_t kEntrySize, uint64_t plainModulus);
 
 /* Given an array of PartNum prf values, finds the median value. May return 0 if algorithm does not find a median */
+<<<<<<< HEAD
 uint32_t FindCutoff(uint32_t *prfVals, uint32_t PartNum);
+=======
+uint32_t FindCutoff(uint32_t *prfVals, uint32_t PartNum);
+>>>>>>> origin/main

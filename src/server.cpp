@@ -127,6 +127,7 @@ void OneSVServer::onlineQuery(bool *bvec, uint32_t *Svec, uint64_t *b0, uint64_t
 	b0[0] = (vec_value + modulus_q - scaled_b0) % modulus_q;  // Remove b0
 	b1[0] = (vec_value + modulus_q - scaled_b1) % modulus_q;  // Remove b1
 
+<<<<<<< HEAD
 	// Table 2 specifies answer noise sigma = 2^22. Sample it from the
 	// OS-backed Crypto++ CSPRNG and add the same sample to both OT branches.
 	const int64_t noise_b0 = SampleAnswerNoise();
@@ -139,6 +140,26 @@ void OneSVServer::onlineQuery(bool *bvec, uint32_t *Svec, uint64_t *b0, uint64_t
 	};
 	b0[0] = add_signed_mod(b0[0], noise_b0);
 	b1[0] = add_signed_mod(b1[0], noise_b0);
+=======
+	// Generate Gaussian noise, size approx 10 bits (standard deviation approx 1024).
+	// Generate different Gaussian noise for b0[0] and b1[0] respectively.
+	static bool seeded = false;
+
+	if (!seeded) {
+		srand(time(NULL));
+		seeded = true;
+	}
+
+	// Generate noise for b0[0]
+	double u1_b0 = (double)rand() / RAND_MAX;
+	double u2_b0 = (double)rand() / RAND_MAX;
+	double z0_b0 = sqrt(-2.0 * log(u1_b0)) * cos(2.0 * M_PI * u2_b0);
+	int64_t noise_b0 = (int64_t)(z0_b0 * 64 *1048576.0);  // 20 bit noise, standard deviation 2^20
+
+	// Add same noise to b0[0] and b1[0], keeping within modulus_q range
+	b0[0] = (b0[0] + modulus_q + (uint64_t)noise_b0) % modulus_q;
+	b1[0] = (b1[0] + modulus_q + (uint64_t)noise_b0) % modulus_q;
+>>>>>>> origin/main
 	// Finally: only one of b0 and b1 contains correct result (all redundant terms subtracted), the other contains incorrect result.
 	// Client selects correct one based on its choice bit.
 	// OT sending moved to main thread persistent session in server_main.cpp, no OT network communication here.

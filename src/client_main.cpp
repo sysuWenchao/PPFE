@@ -17,7 +17,10 @@
 #include <cstdint>
 #include <cstring>
 #include <utility>
+<<<<<<< HEAD
 #include <unordered_set>
+=======
+>>>>>>> origin/main
 using namespace std;
 using namespace troy;
 namespace osuCrypto
@@ -331,6 +334,7 @@ int main(int argc, char *argv[])
     osuCrypto::SimplestOTClientSession otSession(options.ServerIP + ":8081");
 
     auto online_start = chrono::high_resolution_clock::now();
+<<<<<<< HEAD
     const char *query_mode = std::getenv("PPFE_QUERY_MODE");
     const bool use_sequential_queries =
         query_mode != nullptr && std::string(query_mode) == "sequential";
@@ -354,6 +358,8 @@ int main(int argc, char *argv[])
                 query_indices.push_back(candidate);
         }
     }
+=======
+>>>>>>> origin/main
 
     for (uint32_t i = 0; i < num_queries; i++)
     {
@@ -363,7 +369,13 @@ int main(int argc, char *argv[])
             progress++;
         }
 
+<<<<<<< HEAD
         uint32_t query = query_indices[i];
+=======
+        uint16_t part = i % (1 << Log2DBSize / 2);
+        uint16_t offset = i % (1 << Log2DBSize / 2);
+        uint32_t query = (part << (Log2DBSize / 2)) + offset;
+>>>>>>> origin/main
 
         // 1. Online query client computation
         auto query_client_compute_start = chrono::high_resolution_clock::now();
@@ -382,7 +394,11 @@ int main(int argc, char *argv[])
         // Construct query parameters
         uint32_t hintID = client.HintID[hintIndex];
         uint32_t cutoff = client.SelectCutoff[hintIndex];
+<<<<<<< HEAD
         bool shouldFlip = SecureRandomBit();
+=======
+        bool shouldFlip = rand() & 1;
+>>>>>>> origin/main
 
         bool *bvec = client.bvec;
         uint32_t *Svec = client.Svec;
@@ -415,9 +431,19 @@ int main(int argc, char *argv[])
         }
 
         // Prepare ciphertext
+<<<<<<< HEAD
         // Uniform mask over Z_q. Rejection sampling avoids modulo bias and the
         // entropy truncation caused by legacy non-cryptographic generators.
         uint64_t rando = SecureRandomUint64Below(modulus_q);
+=======
+        // uint64_t rando = rand() % plainModulus;
+        // vector<uint64_t> ran(PartSize, 0);
+        // ran[PartSize - 1] = rando;
+        // troy::Plaintext ra = encoder.encode_polynomial_new(ran);
+        // Ciphertext ci_copy = client.ciParity[hintIndex];
+        // evaluator.add_plain_inplace(ci_copy, ra);
+        uint64_t rando = rand() % modulus_q; // Use larger ra for masking, not restricted by plainModulus
+>>>>>>> origin/main
         Ciphertext ci_copy = client.ciParity[hintIndex];
 
         // Use offline pre-generated Enc(0) ciphertext, homomorphically added to ci_copy (avoid overhead of encrypt(0) during online phase)

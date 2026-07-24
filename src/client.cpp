@@ -9,7 +9,11 @@ using namespace CryptoPP;
 using namespace troy;
 // N is supported up to 2^32. Allows us to use uint16_t to store a single offset within partition
 template <class PRF>
+<<<<<<< HEAD
 Client<PRF>::Client(uint32_t LogN, uint32_t EntryB) : prf(GeneratePrfKey())
+=======
+Client<PRF>::Client(uint32_t LogN, uint32_t EntryB) : prf(AES_KEY)
+>>>>>>> origin/main
 {
 	assert(LogN < 32);
 	assert(EntryB >= 8);
@@ -398,6 +402,17 @@ void OneSVClient::Offline(OneSVServer &server, BatchEncoder &encoder, Encryptor 
 	std::cout << "Done" << endl;
 }
 */
+<<<<<<< HEAD
+=======
+uint64_t getSecureRandom64()
+{
+	std::ifstream urandom("/dev/urandom", std::ios::in | std::ios::binary);
+	uint64_t number;
+	urandom.read(reinterpret_cast<char *>(&number), sizeof(number));
+	return number;
+}
+
+>>>>>>> origin/main
 void OneSVClient::Online(OneSVServer &server, uint32_t query, uint64_t *result, troy::BatchEncoder &encoder, troy::Encryptor &encryptor, troy::Evaluator &evaluator)
 {
 	assert(query <= N);
@@ -414,7 +429,11 @@ void OneSVClient::Online(OneSVServer &server, uint32_t query, uint64_t *result, 
 	uint32_t hintID = HintID[hintIndex];
 	uint32_t cutoff = SelectCutoff[hintIndex]; // Median
 	// Randomize the selector bit that is sent to the server.
+<<<<<<< HEAD
 	bool shouldFlip = SecureRandomBit();
+=======
+	bool shouldFlip = rand() & 1;
+>>>>>>> origin/main
 
 	if (hintID > M)
 	{
@@ -451,7 +470,11 @@ void OneSVClient::Online(OneSVServer &server, uint32_t query, uint64_t *result, 
 			Svec[part] = NextDummyIdx() & (PartSize - 1);
 		}
 	}
+<<<<<<< HEAD
 	uint64_t rando = SecureRandomUint64Below(plainModulus);
+=======
+	uint64_t rando = getSecureRandom64() % plainModulus; // Get random value
+>>>>>>> origin/main
 	std::vector<uint64_t> ran(PartSize, 0);
 	ran[PartSize - 1] = rando;
 	troy::Plaintext ra = encoder.encode_polynomial_new(ran);
