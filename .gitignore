@@ -1,0 +1,13 @@
+# Generated build trees and binaries
+/build/
+/troy-nova/build/
+/encryption/libtroy.so
+/encryption/utils/libtroy.so
+
+# Benchmark output
+/test_results/
+/*.csv
+/*.log
+
+# Local editor/agent state
+/.claude/
