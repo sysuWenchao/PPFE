@@ -13,17 +13,11 @@ the cross-system speedup claims cannot be independently regenerated from this
 repository alone. `run_tests.sh` covers PPFE database sizes from \(2^{10}\)
 through \(2^{24}\).
 
-<<<<<<< HEAD
 The benchmark uses a deterministic synthetic database so that it can check
 every returned value. Query indices, selector bits, PRF keys, masks, and answer
 noise are generated with an OS-backed CSPRNG. It is an artifact benchmark, not
 a production deployment.
 
-=======
-The benchmark uses a deterministic synthetic database and deterministic query
-indices so that it can check every returned value. It is an artifact benchmark,
-not a production deployment.
->>>>>>> origin/main
 
 ## Tested environment
 
@@ -37,11 +31,7 @@ The source-build procedure below was verified from a clean checkout on:
 | CUDA toolkit | 12.4 |
 | NVIDIA driver | 550.90.07 |
 | GPU | GeForce RTX 2080 Ti, compute capability 7.5, 11 GB |
-<<<<<<< HEAD
 | PPFE release | `artifact-v2` (`ddc9fe3`) |
-=======
-| PPFE release | `artifact-v2` (based on `87a297f`) |
->>>>>>> origin/main
 | libOTe commit | `0412d31` |
 | cryptoTools submodule | `6290764` |
 | coproto fetched by libOTe | `ded64cb` |
@@ -63,11 +53,6 @@ cd PPFE
 git checkout artifact-v2
 ```
 
-<<<<<<< HEAD
-=======
-All later commands use the repository root discovered with `pwd`; no
-`/root/PPFE-main` path is required.
->>>>>>> origin/main
 
 ## 2. Install system packages
 
@@ -109,11 +94,7 @@ cd libOTe
 git checkout 0412d31
 git submodule update --init --recursive
 
-<<<<<<< HEAD
 cmake -S . -B out/build/linux \
-=======
-cmake -S . -B out/ppfe-release \
->>>>>>> origin/main
   -DCMAKE_BUILD_TYPE=Release \
   -DCMAKE_INSTALL_PREFIX=/usr/local \
   -DCRYPTO_TOOLS_STD_VER=20 \
@@ -124,16 +105,10 @@ cmake -S . -B out/ppfe-release \
   -DENABLE_BOOST=ON \
   -DFETCH_BOOST=ON \
   -DFETCH_AUTO=ON \
-<<<<<<< HEAD
   -DPARALLEL_FETCH=8 \
   -DENABLE_LOGVOLE=OFF
 
 cmake --build out/build/linux --target install -j"$(nproc)"
-=======
-  -DPARALLEL_FETCH=8
-
-cmake --build out/ppfe-release --target install -j"$(nproc)"
->>>>>>> origin/main
 ldconfig
 ```
 
@@ -146,11 +121,8 @@ The flags are significant:
   cryptoTools expects a nonstandard `crypto_scalarmult_noclamp` function.
 - `PARALLEL_FETCH=8` avoids races observed when dependency setup used all 96
   host CPUs.
-<<<<<<< HEAD
 - `ENABLE_LOGVOLE=OFF` prevents libOTe from downloading and building Microsoft
   SEAL for an unused VOLE implementation.
-=======
->>>>>>> origin/main
 
 In this libOTe revision, SimplestOT is part of `liblibOTe.a`; there is no
 separate `libSimplestOT.a`.
@@ -282,13 +254,7 @@ DB_SIZES="10 16" sudo -E ./run_tests.sh test
 The full sweep launches 32 protocol runs (8 sizes × 4 networks), and the
 \(2^{24}\) runs dominate time and memory. For the tested native build, reserve
 at least 30 GB of disk, 16 GB of system RAM, and an NVIDIA GPU with at least
-<<<<<<< HEAD
 11 GB of VRAM.
-=======
-11 GB of VRAM. Exact full-sweep runtime is hardware- and network-dependent;
-retain each generated client/server log with the CSV rather than assuming the
-paper's machine timings.
->>>>>>> origin/main
 
 ## Command-line reference
 
@@ -305,7 +271,6 @@ paper's machine timings.
 - Always build from source on the target system. Submitted prebuilt binaries
   may require a newer glibc and CUDA 12 runtime even when the host otherwise
   satisfies the old README.
-<<<<<<< HEAD
 - PRF keys, query selection, masking, selector bits, and Gaussian answer noise
   use Crypto++ `AutoSeededRandomPool`, which obtains entropy from the operating
   system. Masks are sampled uniformly in `Z_q` with rejection sampling.
@@ -315,16 +280,6 @@ paper's machine timings.
 - Database contents remain deterministic solely for result verification. Do
   not treat the synthetic database or benchmark harness as a production data
   loader.
-=======
-- This revision uses a fixed AES key for its benchmark PRF, `rand()` for query
-  selection/masking and server-side noise sampling, deterministic database
-  contents, and sequential test queries. These choices make artifact runs
-  repeatable but are not suitable for production cryptographic deployment.
-- The server noise implementation currently scales a Gaussian sample by
-  `64 * 1048576`; this does not match the nearby source comment or the
-  manuscript's parameter notation. Results should identify the exact commit
-  and should not claim a different sigma without reconciling the implementation.
->>>>>>> origin/main
 - A container is not supplied. A GPU container would still require a compatible
   NVIDIA host driver and NVIDIA Container Toolkit. The native Ubuntu 22.04 /
   CUDA 12.4 procedure above is the environment that was actually verified.
@@ -361,9 +316,5 @@ export LD_LIBRARY_PATH="$PWD/encryption:$CUDA_HOME/lib64:/usr/local/lib${LD_LIBR
 Reduce both `PARALLEL_FETCH` and build parallelism, for example:
 
 ```bash
-<<<<<<< HEAD
 cmake --build out/build/linux --target install -j4
-=======
-cmake --build out/ppfe-release --target install -j4
->>>>>>> origin/main
 ```
