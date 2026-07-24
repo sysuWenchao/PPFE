@@ -12,21 +12,23 @@ CYAN='\033[0;36m'
 NC='\033[0m' # No Color
 
 # Configuration parameters
+SCRIPT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
+cd "$SCRIPT_DIR"
 ENTRY_SIZE=8
 PORT=8080
 SERVER_IP="10.0.0.1"  # IP in network namespace
 CLIENT_IP="10.0.0.2"
-RESULTS_DIR="./test_results"
+RESULTS_DIR="${RESULTS_DIR:-$SCRIPT_DIR/test_results}"
 
 # CPU core affinity configuration (using taskset to improve performance)
 SERVER_CPU_CORE=0  # Server bound to CPU core 0
 CLIENT_CPU_CORE=1  # Client bound to CPU core 1
 
 # Set library path
-export LD_LIBRARY_PATH=/root/troy-nova/build/src:$LD_LIBRARY_PATH
+export LD_LIBRARY_PATH="$SCRIPT_DIR/encryption:/usr/local/cuda/lib64:/usr/local/lib${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}"
 
 # Database size parameters (Log2DBSize)
-DB_SIZES=(10 12 14 16 18 20 22)
+read -r -a DB_SIZES <<< "${DB_SIZES:-10 12 14 16 18 20 22 24}"
 
 # Network environment configuration
 # Format: "Network Name|Latency|Bandwidth"
@@ -72,11 +74,14 @@ setup_namespaces() {
     cleanup_namespaces 2>/dev/null
     
     echo -e "${BLUE}Creating network namespaces...${NC}"
-    ip netns add server_ns
-    ip netns add client_ns
+    if ! ip netns add server_ns; then
+        echo -e "${RED}Error: cannot create network namespaces. Root inside an unprivileged container is not sufficient; CAP_SYS_ADMIN and CAP_NET_ADMIN are required.${NC}"
+        return 1
+    fi
+    ip netns add client_ns || { cleanup_namespaces; return 1; }
     
     echo -e "${BLUE}Creating virtual ethernet pair veth0 <-> veth1...${NC}"
-    ip link add veth0 type veth peer name veth1
+    ip link add veth0 type veth peer name veth1 || { cleanup_namespaces; return 1; }
     
     ip link set veth0 netns server_ns
     ip link set veth1 netns client_ns
@@ -251,6 +256,15 @@ run_all_tests() {
 
 check_prerequisites() {
     mkdir -p "$RESULTS_DIR"
+    local missing=()
+    for command_name in ip tc ping taskset; do
+        command -v "$command_name" >/dev/null 2>&1 || missing+=("$command_name")
+    done
+    if [ "${#missing[@]}" -ne 0 ]; then
+        echo -e "${RED}Error: missing required commands: ${missing[*]}${NC}"
+        echo "On Ubuntu, install: apt-get install -y iproute2 iputils-ping util-linux"
+        exit 1
+    fi
     if [ ! -f "./build/s3pir_server" ] || [ ! -f "./build/s3pir_client" ]; then
         echo -e "${RED}Error: Binaries not found in ./build/. Please compile first.${NC}"
         exit 1
@@ -266,12 +280,23 @@ main() {
     case $cmd in
         setup)   setup_namespaces ;;
         cleanup) cleanup_namespaces ;;
+        verify)
+            setup_namespaces || exit 1
+            test_connectivity
+            for net_config in "${NETWORK_CONFIGS[@]}"; do
+                IFS='|' read -r network_name delay rate <<< "$net_config"
+                echo -e "${BLUE}Checking ${network_name}${NC}"
+                setup_network_in_client "$delay" "$rate"
+                verify_network_limits "$delay" "$rate"
+                clear_network_in_client
+            done
+            ;;
         test)
-            setup_namespaces
+            setup_namespaces || exit 1
             test_connectivity && run_all_tests
             cleanup_namespaces
             ;;
-        *) echo "Usage: sudo $0 {test|setup|cleanup}" ;;
+        *) echo "Usage: sudo $0 {test|setup|verify|cleanup}" ;;
     esac
 }
 

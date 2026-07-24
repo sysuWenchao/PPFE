@@ -263,7 +263,6 @@ int main(int argc, char *argv[])
     cout << "[Client] Running Offline phase (client computation)..." << endl;
     auto offline_client_compute_start = chrono::high_resolution_clock::now();
     client.Offline(tempServer, encoder, encryptor, evaluator);
-    auto offline_client_compute_end = chrono::high_resolution_clock::now();
 
     // ==================== Offline pre-generation of Enc(0) ====================
     int num_queries_for_precomputation = 1 << (Log2DBSize / 2 + Log2DBSize % 2);
@@ -274,6 +273,9 @@ int main(int argc, char *argv[])
     auto precompute_time = chrono::duration_cast<chrono::milliseconds>(precompute_end - precompute_start);
     cout << "[Offline Pre-generation] Time: " << precompute_time.count() << " ms" << endl;
 
+    // Enc(0) values are required by online queries, so their generation belongs
+    // to the offline phase and must be included in amortized totals.
+    auto offline_client_compute_end = chrono::high_resolution_clock::now();
     auto offline_client_compute_time = chrono::duration_cast<chrono::milliseconds>(offline_client_compute_end - offline_client_compute_start);
     cout << "[Offline Client Computation] Time: " << (double)offline_client_compute_time.count() / 1000.0 << " s" << endl;
 

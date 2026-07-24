@@ -1,5 +1,5 @@
 CXX := g++
-CXXFLAGS := -Ofast -std=c++20 -lcryptopp -fopenmp -mpclmul -no-pie 
+CXXFLAGS := -Ofast -std=c++20 -lcryptopp -fopenmp -mpclmul -no-pie
 
 TARGET := build/s3pir
 INCLUDE := src/include
@@ -10,7 +10,10 @@ CUDA_INCLUDE := -I/usr/local/cuda/include
 CUDA_LIB := -L/usr/local/cuda/lib64 -lcudart
 
 OT_LIB_DIR := -L/usr/local/lib
-OT_LIBS := -l:liblibOTe.a -lSimplestOT -lcryptoTools -lcoproto -lsodium -lpthread
+# SimplestOT is part of liblibOTe.a in current libOTe releases. Boost.System
+# is header-only in the tested Boost 1.90 build.
+OT_LIBS := -l:liblibOTe.a -lcryptoTools -lcoproto -lsodium \
+	-lboost_thread -lboost_regex -lboost_atomic -lpthread
 
 SRC := src/client.cpp src/server.cpp src/main.cpp src/utils.cpp
 NEW_SRC := src/new_client.cpp src/new_server.cpp src/new_main.cpp src/utils.cpp
@@ -26,7 +29,7 @@ all: $(TARGET) $(TARGET)_simlargeserver build/s3pir_server build/s3pir_client
 
 debug: $(TARGET)_debug
 
-clean: 
+clean:
 	rm -f build/*
 
 .PHONY: all clean debug

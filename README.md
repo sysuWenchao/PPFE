@@ -1,299 +1,318 @@
-# PPFE:Preprocessed Private Function Evaluation: Achieving Sublinear Online Complexity for Lookup Tables
+# PPFE: Preprocessed Private Function Evaluation
 
-Preprocessed Private Function Evaluation: Achieving Sublinear Online Complexity for Lookup Tables
+This repository contains the CUDA/C++ implementation of **Preprocessed
+Private Function Evaluation: Achieving Sublinear Online Complexity for Lookup
+Tables**.
 
-## Table of Contents
+## Artifact scope
 
-- [System Requirements](#system-requirements)
-- [Dependencies](#dependencies)
-  - [System Packages](#system-packages)
-  - [Troy Homomorphic Encryption Library](#troy-homomorphic-encryption-library)
-  - [Oblivious Transfer Libraries](#oblivious-transfer-libraries)
-- [Compilation](#compilation)
-  - [1. Build libtroy.so](#1-build-libtroyso)
-  - [2. Build the Server and Client](#2-build-the-server-and-client)
-- [Usage](#usage)
-  - [Start the Server](#start-the-server)
-  - [Run the Client](#run-the-client)
-  - [Automated Testing](#automated-testing)
-  - [Performance Output](#performance-output)
-- [Environment Variables](#environment-variables)
+The repository reproduces the PPFE implementation and its LAN/WAN experiments.
+It does **not** contain the FABLE, SP-LUT, FLORAM, or 2P-DUORAM source trees,
+their raw measurements, or the paper's figure-generation scripts. Consequently,
+the cross-system speedup claims cannot be independently regenerated from this
+repository alone. `run_tests.sh` covers PPFE database sizes from \(2^{10}\)
+through \(2^{24}\).
 
----
+The benchmark uses a deterministic synthetic database and deterministic query
+indices so that it can check every returned value. It is an artifact benchmark,
+not a production deployment.
 
-## System Requirements
+## Tested environment
 
-| Component | Requirement |
-|-----------|-------------|
-| **Operating System** | Linux (tested on Ubuntu 22.04 / Debian-based) |
-| **Compiler** | g++ 10.0+ with C++20 support |
-| **Build Tools** | CMake 3.16+, GNU Make |
-| **CUDA Toolkit** | CUDA 11.3+ |
-| **NVIDIA Driver** | 515+ |
-| **GPU** | NVIDIA GPU with Compute Capability 7.0+ |
+The source-build procedure below was verified from a clean checkout on:
 
----
+| Component | Tested value |
+|---|---|
+| OS | Ubuntu 22.04.4 LTS (x86-64) |
+| Compiler | GCC/G++ 11.4.0 |
+| CMake | 3.22.1 |
+| CUDA toolkit | 12.4 |
+| NVIDIA driver | 550.90.07 |
+| GPU | GeForce RTX 2080 Ti, compute capability 7.5, 11 GB |
+| PPFE release | `artifact-v2` (based on `87a297f`) |
+| libOTe commit | `0412d31` |
+| cryptoTools submodule | `6290764` |
+| coproto fetched by libOTe | `ded64cb` |
+| Boost fetched by libOTe | 1.90.0 |
 
-## Dependencies
+Use CUDA 12.x and a GPU with compute capability 7.0 or newer. The old
+precompiled files in the repository are not portable across glibc/CUDA
+versions; the steps below build new binaries and a new `libtroy.so`.
 
-### System Packages
+G++ 10 is not supported by this dependency set: current coproto/cryptoTools
+requires C++20 library features including `std::bit_cast`. Ubuntu 22.04's
+default G++ 11 is the tested compiler.
 
-Install the required system libraries and build tools:
+## 1. Clone the artifact
+
+```bash
+git clone https://github.com/sysuWenchao/PPFE.git
+cd PPFE
+git checkout artifact-v2
+```
+
+All later commands use the repository root discovered with `pwd`; no
+`/root/PPFE-main` path is required.
+
+## 2. Install system packages
+
+Run as root, or prefix the package commands with `sudo`:
 
 ```bash
 apt-get update
-
-# Build tools
-apt-get install -y build-essential cmake g++-10 gcc-10
-
-# Cryptographic and compression libraries
-apt-get install -y libcrypto++-dev libsodium-dev libssl-dev libzstd-dev libboost-dev
+apt-get install -y \
+  build-essential cmake git python3 ninja-build \
+  libcrypto++-dev libsodium-dev libssl-dev libzstd-dev \
+  libboost-dev libgmp-dev libtool autoconf pkg-config \
+  iproute2 iputils-ping util-linux
 ```
 
-Set g++-10 as the default compiler:
+Make CUDA visible and verify the toolchain:
 
 ```bash
-update-alternatives --install /usr/bin/g++ g++ /usr/bin/g++-10 100
-update-alternatives --install /usr/bin/gcc gcc /usr/bin/gcc-10 100
-update-alternatives --set g++ /usr/bin/g++-10
-update-alternatives --set gcc /usr/bin/gcc-10
-```
-
-Verify:
-
-```bash
-g++ --version | head -1
-# Expected: g++ (Ubuntu 10.5.0-...) 10.5.0
-```
-
-### Troy Homomorphic Encryption Library
-
-Troy is a CUDA-based GPU implementation of RLWE homomorphic encryption schemes (BFV, CKKS, BGV). The project includes Troy source code in two directories:
-
-| Directory | Description |
-|-----------|-------------|
-| `encryption/` | Troy library customized for PPFE |
-| `troy-nova/` | Newer Troy implementation with pre-compiled build artifacts |
-
-The `troy-nova/build/` directory contains pre-compiled CUDA object files (`.o`) that are used to build `libtroy.so` on the target system. See the [compilation section](#1-build-libtroyso) for the build procedure.
-
-### Oblivious Transfer Libraries
-
-The project requires the following libraries for oblivious transfer communication:
-
-| Library | Repository | Purpose |
-|---------|-----------|---------|
-| **cryptoTools** | `github.com/ladnir/cryptoTools` | Base cryptographic utilities (PRNG, BitVector, Timer) |
-| **coproto** | `github.com/ladnir/coproto` | Asynchronous socket-based communication |
-| **libOTe** | `github.com/osu-crypto/libOTe` | Oblivious transfer protocol implementations (SimplestOT included) |
-
-Clone and build each library:
-
-```bash
-# Build order matters: cryptoTools → coproto → libOTe
-mkdir -p /root/ot-libs && cd /root/ot-libs
-
-git clone https://github.com/ladnir/cryptoTools.git
-cd cryptoTools && mkdir build && cd build
-cmake .. -DCMAKE_INSTALL_PREFIX=/usr/local && make -j$(nproc) && make install
-
-cd /root/ot-libs
-git clone https://github.com/ladnir/coproto.git
-cd coproto && mkdir build && cd build
-cmake .. -DCMAKE_INSTALL_PREFIX=/usr/local && make -j$(nproc) && make install
-
-cd /root/ot-libs
-git clone https://github.com/osu-crypto/libOTe.git
-cd libOTe && mkdir build && cd build
-cmake .. -DCMAKE_INSTALL_PREFIX=/usr/local -DWITH_SimplestOT=ON && make -j$(nproc) && make install
-```
-
-
-
----
-
----
-
-## Compilation
-
-### 1. Build libtroy.so
-
-The Troy library must be built before compiling PPFE. The procedure links pre-compiled CUDA object files from `troy-nova/build/` against the system's native libraries.
-
-#### Step 1.1 — Set up CUDA environment
-
-```bash
-export PATH=/usr/local/cuda/bin:$PATH
 export CUDA_HOME=/usr/local/cuda
-```
+export PATH="$CUDA_HOME/bin:$PATH"
 
-Verify CUDA availability:
-
-```bash
+g++ --version
+cmake --version
 nvcc --version
-# Expected: Cuda compilation tools, release 11.x or 12.x
+nvidia-smi
 ```
 
-#### Step 1.2 — Build the library
+If CUDA is installed elsewhere, set `CUDA_HOME` to that directory.
+
+## 3. Build the OT dependencies
+
+libOTe already pins the compatible cryptoTools revision and its build system
+pins coproto, macoro, function2, and other transitive dependencies. Do not
+independently clone the moving default branches of those projects.
 
 ```bash
-cd /root/PPFE-main
+cd /tmp
+git clone --recursive https://github.com/osu-crypto/libOTe.git
+cd libOTe
+git checkout 0412d31
+git submodule update --init --recursive
 
-# Collect all pre-compiled CUDA object files
-OBJS=$(find troy-nova/build/src/CMakeFiles/troy.dir -name "*.o")
+cmake -S . -B out/ppfe-release \
+  -DCMAKE_BUILD_TYPE=Release \
+  -DCMAKE_INSTALL_PREFIX=/usr/local \
+  -DCRYPTO_TOOLS_STD_VER=20 \
+  -DENABLE_SIMPLESTOT=ON \
+  -DENABLE_SODIUM=ON \
+  -DFETCH_SODIUM=OFF \
+  -DSODIUM_MONTGOMERY=OFF \
+  -DENABLE_BOOST=ON \
+  -DFETCH_BOOST=ON \
+  -DFETCH_AUTO=ON \
+  -DPARALLEL_FETCH=8
 
-# Link into a shared library
-g++ -Ofast -std=c++17 -fPIC -shared \
-  $OBJS \
-  -L${CUDA_HOME}/lib64 -lcudart \
-  -o encryption/libtroy.so \
-  -lpthread -lcryptopp -lsodium -lzstd
+cmake --build out/ppfe-release --target install -j"$(nproc)"
+ldconfig
 ```
 
-#### Step 1.3 — Verify
+The flags are significant:
+
+- `CRYPTO_TOOLS_STD_VER=20` fixes the `std::bit_cast` compile error.
+- `FETCH_AUTO=ON` obtains the pinned transitive dependencies.
+- `ENABLE_SIMPLESTOT=ON` enables the base OT used by PPFE.
+- `SODIUM_MONTGOMERY=OFF` uses Ubuntu's standard libsodium. Without it,
+  cryptoTools expects a nonstandard `crypto_scalarmult_noclamp` function.
+- `PARALLEL_FETCH=8` avoids races observed when dependency setup used all 96
+  host CPUs.
+
+In this libOTe revision, SimplestOT is part of `liblibOTe.a`; there is no
+separate `libSimplestOT.a`.
+
+## 4. Build Troy from source
+
+Return to the PPFE checkout and select the CUDA architecture for the installed
+GPU. The tested RTX 2080 Ti uses `75`; common alternatives include `70`, `80`,
+and `86`.
 
 ```bash
-# Check symbol count (expect 1400+)
-nm -D encryption/libtroy.so | wc -l
+cd /path/to/PPFE
 
-# Verify no unresolved shared library dependencies
-ldd encryption/libtroy.so | grep "not found"
-# Should produce NO output
+cmake -S troy-nova -B build/troy \
+  -DCMAKE_BUILD_TYPE=Release \
+  -DCMAKE_CUDA_COMPILER="$CUDA_HOME/bin/nvcc" \
+  -DCMAKE_CUDA_ARCHITECTURES=75 \
+  -DTROY_PYBIND=OFF \
+  -DTROY_TEST=OFF \
+  -DTROY_BENCH=OFF \
+  -DTROY_EXAMPLES=OFF \
+  -DTROY_ZSTD=OFF
+
+cmake --build build/troy --target troy -j"$(nproc)"
+cp build/troy/src/libtroy.so encryption/libtroy.so
 ```
 
-### 2. Build the Server and Client
+`TROY_ZSTD=OFF` disables optional ciphertext compression and prevents CMake
+from downloading Zstd when Ubuntu's `libzstd-dev` package does not expose the
+expected CMake target. PPFE's tested protocol path does not use Troy's optional
+Zstd serialization.
 
-> **Prerequisite**: OT libraries must be installed. See [Oblivious Transfer Libraries](#oblivious-transfer-libraries).
-
-Use the provided Makefile to build all targets:
+## 5. Build PPFE
 
 ```bash
-cd /root/PPFE-main
-export PATH=/usr/local/cuda/bin:$PATH
-
-make
+cd /path/to/PPFE
+make -j"$(nproc)"
 ```
 
-This produces the following binaries in `build/`:
+The build produces:
 
-| Binary | Source Files | Description |
-|--------|-------------|-------------|
-| `build/s3pir_server` | `server_main.cpp`, `server.cpp`, `utils.cpp`, `network.cpp` | Standalone server |
-| `build/s3pir_client` | `client_main.cpp`, `client.cpp`, `server.cpp`, `utils.cpp`, `network.cpp` | Standalone client |
+- `build/s3pir`
+- `build/s3pir_simlargeserver`
+- `build/s3pir_server`
+- `build/s3pir_client`
 
-To clean the build:
+Confirm that runtime libraries resolve:
 
 ```bash
-make clean
+export LD_LIBRARY_PATH="$PWD/encryption:$CUDA_HOME/lib64:/usr/local/lib${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}"
+ldd build/s3pir_server | grep "not found" || true
+ldd build/s3pir_client | grep "not found" || true
 ```
 
----
+Both commands should print nothing.
 
-## Usage
+## 6. Smoke test
 
-### Start the Server
+Terminal 1:
 
 ```bash
-export LD_LIBRARY_PATH=/root/PPFE-main/encryption:/usr/local/cuda/lib64:$LD_LIBRARY_PATH
+cd /path/to/PPFE
+export CUDA_HOME=/usr/local/cuda
+export LD_LIBRARY_PATH="$PWD/encryption:$CUDA_HOME/lib64:/usr/local/lib${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}"
+./build/s3pir_server 10 8 18080
+```
 
-cd /root/PPFE-main
+Terminal 2:
 
-# Syntax
+```bash
+cd /path/to/PPFE
+export CUDA_HOME=/usr/local/cuda
+export LD_LIBRARY_PATH="$PWD/encryption:$CUDA_HOME/lib64:/usr/local/lib${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}"
+./build/s3pir_client 127.0.0.1 18080 smoke.csv
+```
+
+Successful output contains:
+
+```text
+[Verification] ✓ All correct!
+[Client] Completed 32 queries
+```
+
+On the tested RTX 2080 Ti host, the \(2^{10}\) smoke test took about 9 seconds:
+8.45 seconds of client offline computation plus 0.13 seconds to pre-generate
+the required Enc(0) values. Online time was 0.94 ms/query. Timings vary by
+hardware and CPU/GPU load.
+
+The client CSV contains:
+
+```text
+Variant, Log2 DBSize, EntrySize(Bytes), NumQueries, Offline Time (s), Online Time (ms), Amortized Compute Time Per Query (ms)
+```
+
+Offline time now includes Enc(0) pre-generation because each online query
+consumes one of those ciphertexts. Results produced by older commits excluded
+that work from offline and amortized totals and should not be compared directly.
+
+## 7. Network benchmark
+
+`run_tests.sh` creates Linux network namespaces and applies `tc` limits, so it
+requires root, at least two CPU cores, and the `CAP_SYS_ADMIN` and
+`CAP_NET_ADMIN` capabilities. Root inside an unprivileged Docker/cloud
+container is not sufficient. Use a native host or launch the container with
+the required capabilities.
+
+```bash
+sudo ./run_tests.sh setup
+sudo ./run_tests.sh verify
+sudo ./run_tests.sh test
+sudo ./run_tests.sh cleanup
+```
+
+The four configurations are 800 µs/3 Gbit, 800 µs/1 Gbit, 40 ms/200 Mbit, and
+80 ms/100 Mbit. Results and logs are written under `test_results/`.
+
+The default sweep is:
+
+```text
+10 12 14 16 18 20 22 24
+```
+
+Use a small subset before committing to the complete sweep:
+
+```bash
+DB_SIZES="10 16" sudo -E ./run_tests.sh test
+```
+
+The full sweep launches 32 protocol runs (8 sizes × 4 networks), and the
+\(2^{24}\) runs dominate time and memory. For the tested native build, reserve
+at least 30 GB of disk, 16 GB of system RAM, and an NVIDIA GPU with at least
+11 GB of VRAM. Exact full-sweep runtime is hardware- and network-dependent;
+retain each generated client/server log with the CSV rather than assuming the
+paper's machine timings.
+
+## Command-line reference
+
+```text
 ./build/s3pir_server <Log2DBSize> <EntrySize> <Port>
-```
-
-| Parameter | Description | Constraints |
-|-----------|-------------|-------------|
-| `Log2DBSize` | log₂ of the number of database entries | e.g., 10 → 1,024 entries; 16 → 65,536 entries |
-| `EntrySize` | Size of each database entry in bytes | Must be **8**, and a multiple of 8 |
-| `Port` | TCP port to listen on | e.g., 8080 |
-
-**Example**:
-
-```bash
-./build/s3pir_server 16 8 8080
-```
-
-The server will wait for a client connection and process queries.
-
-### Run the Client
-
-```bash
-export LD_LIBRARY_PATH=/root/PPFE-main/encryption:/usr/local/cuda/lib64:$LD_LIBRARY_PATH
-
-cd /root/PPFE-main
-
-# Syntax
 ./build/s3pir_client <ServerIP> <Port> <OutputFile>
 ```
 
-| Parameter | Description |
-|-----------|-------------|
-| `ServerIP` | IP address of the server |
-| `Port` | Port the server is listening on |
-| `OutputFile` | Path for performance statistics output (CSV) |
+`EntrySize` is currently required to be 8 bytes. `Log2DBSize=24` means
+\(2^{24}\) database entries.
 
-**Example**:
+## Reproducibility and security notes
+
+- Always build from source on the target system. Submitted prebuilt binaries
+  may require a newer glibc and CUDA 12 runtime even when the host otherwise
+  satisfies the old README.
+- This revision uses a fixed AES key for its benchmark PRF, `rand()` for query
+  selection/masking and server-side noise sampling, deterministic database
+  contents, and sequential test queries. These choices make artifact runs
+  repeatable but are not suitable for production cryptographic deployment.
+- The server noise implementation currently scales a Gaussian sample by
+  `64 * 1048576`; this does not match the nearby source comment or the
+  manuscript's parameter notation. Results should identify the exact commit
+  and should not claim a different sigma without reconciling the implementation.
+- A container is not supplied. A GPU container would still require a compatible
+  NVIDIA host driver and NVIDIA Container Toolkit. The native Ubuntu 22.04 /
+  CUDA 12.4 procedure above is the environment that was actually verified.
+
+## Troubleshooting
+
+### `error: 'bit_cast' is not a member of 'std'`
+
+Use G++ 11 or newer and configure cryptoTools with
+`-DCRYPTO_TOOLS_STD_VER=20`. Do not force Ubuntu 22.04 to G++ 10.
+
+### `crypto_scalarmult_noclamp` static assertion
+
+When using Ubuntu's `libsodium-dev`, add `-DSODIUM_MONTGOMERY=OFF`.
+
+### `cannot find -lSimplestOT`
+
+Use the repository's updated Makefile. Current libOTe includes SimplestOT in
+`liblibOTe.a`.
+
+### `cannot find -lboost_system`
+
+Use the updated Makefile. Boost.System 1.90 is header-only.
+
+### `libtroy.so` or `libcudart.so` not found
 
 ```bash
-./build/s3pir_client 127.0.0.1 8080 results.csv
+export CUDA_HOME=/usr/local/cuda
+export LD_LIBRARY_PATH="$PWD/encryption:$CUDA_HOME/lib64:/usr/local/lib${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}"
 ```
 
-### Automated Testing
+### Out of memory during dependency builds
 
-The `run_tests.sh` script runs the server and client under simulated network conditions using Linux network namespaces. It evaluates protocol performance across various database sizes and network configurations (latency, bandwidth).
-
-> **Important**: This script requires the server and client binaries to be compiled first. **Requires root privileges** for network namespace manipulation.
+Reduce both `PARALLEL_FETCH` and build parallelism, for example:
 
 ```bash
-sudo ./run_tests.sh test       # Run all network configuration tests
-sudo ./run_tests.sh setup      # Set up network namespaces only
-sudo ./run_tests.sh verify     # Verify network connectivity and limits
-sudo ./run_tests.sh cleanup    # Remove simulated network environments
+cmake --build out/ppfe-release --target install -j4
 ```
-
-The script runs through these combinations:
-
-- **Database sizes** (Log2DBSize): 10, 12, 14, 16, 18, 20, 22
-- **Network conditions**: 800μs/3Gbit, 800μs/1Gbit, 40ms/200Mbit, 80ms/100Mbit
-
-Results are saved under `./test_results/`.
-
-### Performance Output
-
-Upon completion, the client outputs detailed performance metrics to the specified CSV file:
-
-| Metric | Description |
-|--------|-------------|
-| **Offline Time** | Pre-processing and hint generation time |
-| **Online Time** | Query construction, server computation, and response unmasking |
-| **Cost Per Query** | Average online time per individual query |
-| **Amortized Compute Time** | Predicted per-query cost in long-running scenarios (amortizes offline work) |
-
-**CSV format**:
-
-```csv
-Variant, Log2 DBSize, EntrySize(Bytes), NumQueries, Offline Time (s), Online Time (ms), Amortized Compute Time Per Query (ms)
-One server, 10, 8, 32, 8.801, 0.25, 18.5854
-```
-
----
-
-## Environment Variables
-
-| Variable | Value | Purpose |
-|----------|-------|---------|
-| `PATH` | Include `/usr/local/cuda/bin` | Makes `nvcc` and CUDA tools available |
-| `LD_LIBRARY_PATH` | `encryption/:${CUDA_HOME}/lib64` | Runtime shared library search path |
-| `CUDA_HOME` | `/usr/local/cuda` | CUDA Toolkit installation root |
-
----
-
-## References
-
-- [Troy](https://github.com/v6p/Troy) — GPU-accelerated homomorphic encryption library
-- [libOTe](https://github.com/osu-crypto/libOTe) — Oblivious transfer library
-- [cryptoTools](https://github.com/ladnir/cryptoTools) — Cryptographic utility library
-- [coproto](https://github.com/ladnir/coproto) — Communication protocol library
-- [Crypto++](https://www.cryptopp.com/) — C++ cryptographic library
-- [libsodium](https://doc.libsodium.org/) — Modern cryptography library
