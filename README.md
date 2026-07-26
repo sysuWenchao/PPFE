@@ -29,15 +29,15 @@ The source-build procedure below was verified from a clean checkout on:
 | CUDA toolkit | 12.4 |
 | NVIDIA driver | 550.90.07 |
 | GPU | GeForce RTX 2080 Ti, compute capability 7.5, 11 GB |
-| PPFE release | `artifact-v2` (based on `87a297f`) |
+| PPFE source | `artifact-v3-fix` branch |
 | libOTe commit | `0412d31` |
 | cryptoTools submodule | `6290764` |
 | coproto fetched by libOTe | `ded64cb` |
 | Boost fetched by libOTe | 1.90.0 |
 
-Use CUDA 12.x and a GPU with compute capability 7.0 or newer. The old
-precompiled files in the repository are not portable across glibc/CUDA
-versions; the steps below build new binaries and a new `libtroy.so`.
+Use CUDA 12.x and a GPU with compute capability 7.0 or newer. Generated
+binaries and build trees are deliberately excluded from the repository; the
+steps below build them for the target system.
 
 G++ 10 is not supported by this dependency set: current coproto/cryptoTools
 requires C++20 library features including `std::bit_cast`. Ubuntu 22.04's
@@ -48,7 +48,7 @@ default G++ 11 is the tested compiler.
 ```bash
 git clone https://github.com/sysuWenchao/PPFE.git
 cd PPFE
-git checkout artifact-v2
+git checkout artifact-v3-fix
 ```
 
 All later commands use the repository root discovered with `pwd`; no
@@ -70,7 +70,8 @@ apt-get install -y \
 Make CUDA visible and verify the toolchain:
 
 ```bash
-export CUDA_HOME=/usr/local/cuda
+export CUDA_HOME="${CUDA_HOME:-/usr/local/cuda}"
+export OT_PREFIX="${OT_PREFIX:-/usr/local}"
 export PATH="$CUDA_HOME/bin:$PATH"
 
 g++ --version
@@ -79,7 +80,8 @@ nvcc --version
 nvidia-smi
 ```
 
-If CUDA is installed elsewhere, set `CUDA_HOME` to that directory.
+If CUDA or the OT libraries are installed elsewhere, set `CUDA_HOME` or
+`OT_PREFIX` respectively. The Makefile and benchmark script honor both values.
 
 ## 3. Build the OT dependencies
 
@@ -96,7 +98,7 @@ git submodule update --init --recursive
 
 cmake -S . -B out/ppfe-release \
   -DCMAKE_BUILD_TYPE=Release \
-  -DCMAKE_INSTALL_PREFIX=/usr/local \
+  -DCMAKE_INSTALL_PREFIX="$OT_PREFIX" \
   -DCRYPTO_TOOLS_STD_VER=20 \
   -DENABLE_SIMPLESTOT=ON \
   -DENABLE_SODIUM=ON \
@@ -156,7 +158,8 @@ Zstd serialization.
 
 ```bash
 cd /path/to/PPFE
-make -j"$(nproc)"
+make CUDA_HOME="$CUDA_HOME" OT_PREFIX="$OT_PREFIX" -j"$(nproc)"
+make check-security
 ```
 
 The build produces:
@@ -169,7 +172,7 @@ The build produces:
 Confirm that runtime libraries resolve:
 
 ```bash
-export LD_LIBRARY_PATH="$PWD/encryption:$CUDA_HOME/lib64:/usr/local/lib${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}"
+export LD_LIBRARY_PATH="$PWD/encryption:$CUDA_HOME/lib64:$OT_PREFIX/lib${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}"
 ldd build/s3pir_server | grep "not found" || true
 ldd build/s3pir_client | grep "not found" || true
 ```
@@ -182,8 +185,9 @@ Terminal 1:
 
 ```bash
 cd /path/to/PPFE
-export CUDA_HOME=/usr/local/cuda
-export LD_LIBRARY_PATH="$PWD/encryption:$CUDA_HOME/lib64:/usr/local/lib${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}"
+export CUDA_HOME="${CUDA_HOME:-/usr/local/cuda}"
+export OT_PREFIX="${OT_PREFIX:-/usr/local}"
+export LD_LIBRARY_PATH="$PWD/encryption:$CUDA_HOME/lib64:$OT_PREFIX/lib${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}"
 ./build/s3pir_server 10 8 18080
 ```
 
@@ -191,8 +195,9 @@ Terminal 2:
 
 ```bash
 cd /path/to/PPFE
-export CUDA_HOME=/usr/local/cuda
-export LD_LIBRARY_PATH="$PWD/encryption:$CUDA_HOME/lib64:/usr/local/lib${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}"
+export CUDA_HOME="${CUDA_HOME:-/usr/local/cuda}"
+export OT_PREFIX="${OT_PREFIX:-/usr/local}"
+export LD_LIBRARY_PATH="$PWD/encryption:$CUDA_HOME/lib64:$OT_PREFIX/lib${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}"
 ./build/s3pir_client 127.0.0.1 18080 smoke.csv
 ```
 
@@ -201,6 +206,7 @@ Successful output contains:
 ```text
 [Verification] ✓ All correct!
 [Client] Completed 32 queries
+[Server] Online server computation average: ... ms/query
 ```
 
 On the tested RTX 2080 Ti host, the \(2^{10}\) smoke test took about 9 seconds:
@@ -227,10 +233,10 @@ container is not sufficient. Use a native host or launch the container with
 the required capabilities.
 
 ```bash
-sudo ./run_tests.sh setup
-sudo ./run_tests.sh verify
-sudo ./run_tests.sh test
-sudo ./run_tests.sh cleanup
+sudo --preserve-env=CUDA_HOME,OT_PREFIX ./run_tests.sh setup
+sudo --preserve-env=CUDA_HOME,OT_PREFIX ./run_tests.sh verify
+sudo --preserve-env=CUDA_HOME,OT_PREFIX ./run_tests.sh test
+sudo --preserve-env=CUDA_HOME,OT_PREFIX ./run_tests.sh cleanup
 ```
 
 The four configurations are 800 µs/3 Gbit, 800 µs/1 Gbit, 40 ms/200 Mbit, and
@@ -245,7 +251,8 @@ The default sweep is:
 Use a small subset before committing to the complete sweep:
 
 ```bash
-DB_SIZES="10 16" sudo -E ./run_tests.sh test
+DB_SIZES="10 16" sudo --preserve-env=CUDA_HOME,OT_PREFIX,DB_SIZES \
+  ./run_tests.sh test
 ```
 
 The full sweep launches 32 protocol runs (8 sizes × 4 networks), and the
@@ -267,17 +274,21 @@ paper's machine timings.
 
 ## Reproducibility and security notes
 
-- Always build from source on the target system. Submitted prebuilt binaries
-  may require a newer glibc and CUDA 12 runtime even when the host otherwise
-  satisfies the old README.
-- This revision uses a fixed AES key for its benchmark PRF, `rand()` for query
-  selection/masking and server-side noise sampling, deterministic database
-  contents, and sequential test queries. These choices make artifact runs
-  repeatable but are not suitable for production cryptographic deployment.
-- The server noise implementation currently scales a Gaussian sample by
-  `64 * 1048576`; this does not match the nearby source comment or the
-  manuscript's parameter notation. Results should identify the exact commit
-  and should not claim a different sigma without reconciling the implementation.
+- Always build from source on the target system. The repository no longer
+  ships host-specific ELF binaries, shared libraries, or CMake build trees.
+- Each client generates a fresh 128-bit PRF key with Crypto++'s OS-backed
+  `AutoSeededRandomPool`. Query masks are sampled uniformly in
+  \(\mathbb{Z}_q\) by rejection sampling, and selector bits use the same CSPRNG.
+- The answer-noise parameter is defined once as
+  `PPFE_ANSWER_NOISE_SIGMA = 2^22`, matching Table 2. Sampling uses the
+  OS-backed CSPRNG and signed modular addition.
+- Enc(0) ciphertext randomizers are consumed once. Exhausting the offline cache
+  raises an error instead of silently reusing a ciphertext.
+- `make check-security` checks the centralized HE/noise parameters, randomness
+  ranges and noise statistics, and rejects fixed keys, `rand()`, Enc(0)
+  wraparound, or checked-in generated binaries.
+- Database contents and benchmark query indices remain deterministic solely for
+  reproducible correctness verification.
 - A container is not supplied. A GPU container would still require a compatible
   NVIDIA host driver and NVIDIA Container Toolkit. The native Ubuntu 22.04 /
   CUDA 12.4 procedure above is the environment that was actually verified.
@@ -305,8 +316,9 @@ Use the updated Makefile. Boost.System 1.90 is header-only.
 ### `libtroy.so` or `libcudart.so` not found
 
 ```bash
-export CUDA_HOME=/usr/local/cuda
-export LD_LIBRARY_PATH="$PWD/encryption:$CUDA_HOME/lib64:/usr/local/lib${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}"
+export CUDA_HOME="${CUDA_HOME:-/usr/local/cuda}"
+export OT_PREFIX="${OT_PREFIX:-/usr/local}"
+export LD_LIBRARY_PATH="$PWD/encryption:$CUDA_HOME/lib64:$OT_PREFIX/lib${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}"
 ```
 
 ### Out of memory during dependency builds

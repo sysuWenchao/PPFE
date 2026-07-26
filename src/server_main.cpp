@@ -118,37 +118,20 @@ int main(int argc, char *argv[])
     // uint32_t PartSize = 1 << (options.Log2DBSize / 2 + options.Log2DBSize % 2);
     uint32_t PartSize = 1 << (options.Log2DBSize / 2 + options.Log2DBSize % 2);
 
-    // Select appropriate bgvRingSize based on PartSize (must be a power of 2 and >= PartSize)
-    uint32_t bgvRingSize = 2048;
-    if (PartSize > 2048)
-    {
-        bgvRingSize = 4096;
-    }
-    if (PartSize > 4096)
-    {
-        bgvRingSize = 8192;
-    }
-
-    while (bgvRingSize < PartSize && bgvRingSize < 32768)
-    {
-        bgvRingSize *= 2;
-    }
-
-    if (bgvRingSize < PartSize)
-    {
-        cerr << "[Error] PartSize (" << PartSize << ") exceeds maximum supported bgvRingSize (32768)" << endl;
-        cerr << "[Error] Please decrease the Log2DBSize parameter" << endl;
-        return 1;
-    }
+    uint32_t bgvRingSize = SelectPolyModulusDegree(options.Log2DBSize);
 
     cout << "[Server] PartSize=" << PartSize << ", bgvRingSize=" << bgvRingSize << endl;
-    uint32_t bgvQSize = 54;
-    uint32_t bgvPlainModuluSize = 20;
+    uint32_t bgvQSize = PPFE_COEFF_MODULUS_BITS;
+    uint32_t bgvPlainModuluSize = PPFE_PLAIN_MODULUS_BITS;
 
     EncryptionParameters params(SchemeType::BFV);
     params.set_poly_modulus_degree(bgvRingSize);
     params.set_coeff_modulus(CoeffModulus::create(bgvRingSize, {bgvQSize}));
     params.set_plain_modulus(PlainModulus::batching(bgvRingSize, bgvPlainModuluSize));
+    ValidatePolyModulusDegree(options.Log2DBSize, bgvRingSize);
+    ValidateProtocolParameters(
+        bgvQSize, bgvPlainModuluSize,
+        params.coeff_modulus()[0].value(), params.plain_modulus()->value());
     HeContextPointer context = HeContext::create(params, true, SecurityLevel::Classical128);
 
     KeyGenerator keygen(context);
@@ -251,6 +234,7 @@ int main(int argc, char *argv[])
     uint64_t *Response_b1 = new uint64_t[B];
 
     int queryCount = 0;
+    int64_t totalOnlineServerComputeUs = 0;
 
     while (true)
     {
@@ -285,7 +269,6 @@ int main(int argc, char *argv[])
             }
 
             // Process all batch queries
-            auto online_server_compute_start = chrono::high_resolution_clock::now();
             vector<NetworkHelper::BatchResponse> batchResponses(batchSize);
             for (uint32_t i = 0; i < batchSize; i++)
             {
@@ -304,10 +287,16 @@ int main(int argc, char *argv[])
                 {
                     bvec_array[j] = bvec_bool[j];
                 }
+                auto online_server_compute_start = chrono::high_resolution_clock::now();
                 server.onlineQuery(bvec_array, batchQueries[i].Svec.data(),
                                    batchResponses[i].Response_b0.data(),
                                    batchResponses[i].Response_b1.data(),
                                    batchQueries[i].ciphertext, encoder);
+                auto online_server_compute_end = chrono::high_resolution_clock::now();
+                totalOnlineServerComputeUs +=
+                    chrono::duration_cast<chrono::microseconds>(
+                        online_server_compute_end - online_server_compute_start)
+                        .count();
 
                 // Send b0/b1 via OT persistent connection (one connection, multiple OTs)
                 // Note: b0/b1 here are uint64 in ciphertext modulus q domain (output after scaling/removal/noise addition in server.cpp)
@@ -315,10 +304,6 @@ int main(int argc, char *argv[])
 
                 delete[] bvec_array; // Free memory
             }
-            auto online_server_compute_end = chrono::high_resolution_clock::now();
-            auto online_server_compute_time = chrono::duration_cast<chrono::microseconds>(online_server_compute_end - online_server_compute_start);
-            // cout << "[Server] Online server compute time: " << online_server_compute_time.count() / 1000.0 << " ms (batch " << batchSize << " )" << endl;
-
             // Send batch responses
             // Variables sent include:
             // - batchResponses: vector<BatchResponse> - Batch response data, each BatchResponse contains:
@@ -357,7 +342,13 @@ int main(int argc, char *argv[])
             }
 
             // Process query
+            auto online_server_compute_start = chrono::high_resolution_clock::now();
             server.onlineQuery(bvec, Svec, Response_b0, Response_b1, queryCiphertext, encoder);
+            auto online_server_compute_end = chrono::high_resolution_clock::now();
+            totalOnlineServerComputeUs +=
+                chrono::duration_cast<chrono::microseconds>(
+                    online_server_compute_end - online_server_compute_start)
+                    .count();
 
             // Send response
             if (!NetworkHelper::sendUint64Array(clientSocket, Response_b0, B))
@@ -381,6 +372,14 @@ int main(int argc, char *argv[])
     }
 
     cout << "[Server] Total queries processed: " << queryCount << endl;
+    if (queryCount > 0)
+    {
+        cout << "[Server] Online server computation total: "
+             << totalOnlineServerComputeUs / 1000.0 << " ms" << endl;
+        cout << "[Server] Online server computation average: "
+             << totalOnlineServerComputeUs / 1000.0 / queryCount
+             << " ms/query" << endl;
+    }
 
     // Cleanup
     delete[] bvec;

@@ -71,8 +71,7 @@ public:
 	// Runs the online phase with a single query. 
 	void Online(OneSVServer &server, uint32_t query, uint64_t *result,troy::BatchEncoder &encoder, troy::Encryptor &encryptor, troy::Evaluator &evaluator);
 
-	// ==================== Enc(0) pre-generation cache (offline generation, online reuse) ====================
-	// Default pre-generation count: can be adjusted based on num_queries or actual load
+	// Enc(0) randomizers are pre-generated offline and consumed exactly once.
 	void precomputeEncZeros(size_t count, troy::BatchEncoder &encoder, troy::Encryptor &encryptor);
 	const troy::Ciphertext& getNextEncZero();
 

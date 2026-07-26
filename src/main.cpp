@@ -164,14 +164,19 @@ int main(int argc, char *argv[])
 	{
 		output_csv.open(options.OutputFile, ofstream::out | ofstream::app);
 	}
-	uint32_t bgvRingSize = 2048;
-	uint32_t bgvQSize = 56;			  // Within 56 // lambda becomes 30
-	uint32_t bgvPlainModuluSize = 33; // Decryption correct
+	uint32_t bgvRingSize = SelectPolyModulusDegree(options.Log2DBSize);
+	uint32_t bgvQSize = PPFE_COEFF_MODULUS_BITS;
+	uint32_t bgvPlainModuluSize = PPFE_PLAIN_MODULUS_BITS;
 	EncryptionParameters params(SchemeType::BFV);
 	params.set_poly_modulus_degree(bgvRingSize);
 	params.set_coeff_modulus(CoeffModulus::create(bgvRingSize, {bgvQSize}));
 	params.set_plain_modulus(PlainModulus::batching(bgvRingSize, bgvPlainModuluSize));
-	HeContextPointer context = HeContext::create(params, true, SecurityLevel::Nil);
+	ValidatePolyModulusDegree(options.Log2DBSize, bgvRingSize);
+	ValidateProtocolParameters(
+		bgvQSize, bgvPlainModuluSize,
+		params.coeff_modulus()[0].value(), params.plain_modulus()->value());
+	HeContextPointer context = HeContext::create(
+		params, true, SecurityLevel::Classical128);
 	BatchEncoder encoder(context);
 	/*
 	context->to_device_inplace();

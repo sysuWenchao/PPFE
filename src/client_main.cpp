@@ -193,6 +193,12 @@ int main(int argc, char *argv[])
     // Get actual coefficient modulus and plaintext modulus
     uint64_t modulus_q = params.coeff_modulus()[0].value();
     uint64_t plain_modulus_value = params.plain_modulus()->value();
+    ValidatePolyModulusDegree(Log2DBSize, bgvRingSize);
+    ValidateProtocolParameters(bgvQSize, bgvPlainModuluSize,
+                               modulus_q, plain_modulus_value);
+    if (plainModulus != plain_modulus_value)
+        throw std::invalid_argument(
+            "server plaintext modulus does not match its HE parameters");
     cout << "[Client] Ciphertext modulus q obtained during initialization = " << modulus_q << endl;
     cout << "[Client] Plaintext modulus p obtained during initialization = " << plain_modulus_value << endl;
     cout << "[Client] q % p = " << (modulus_q % plain_modulus_value) << " (0 means p divides q)" << endl;
@@ -360,7 +366,7 @@ int main(int argc, char *argv[])
         // Construct query parameters
         uint32_t hintID = client.HintID[hintIndex];
         uint32_t cutoff = client.SelectCutoff[hintIndex];
-        bool shouldFlip = rand() & 1;
+        bool shouldFlip = SecureRandomBit();
 
         bool *bvec = client.bvec;
         uint32_t *Svec = client.Svec;
@@ -392,14 +398,9 @@ int main(int argc, char *argv[])
             }
         }
 
-        // Prepare ciphertext
-        // uint64_t rando = rand() % plainModulus;
-        // vector<uint64_t> ran(PartSize, 0);
-        // ran[PartSize - 1] = rando;
-        // troy::Plaintext ra = encoder.encode_polynomial_new(ran);
-        // Ciphertext ci_copy = client.ciParity[hintIndex];
-        // evaluator.add_plain_inplace(ci_copy, ra);
-        uint64_t rando = rand() % modulus_q; // Use larger ra for masking, not restricted by plainModulus
+        // Uniform mask over Z_q. Rejection sampling prevents both modulo bias
+        // and the entropy truncation of the former non-cryptographic generator.
+        uint64_t rando = SecureRandomUint64Below(modulus_q);
         Ciphertext ci_copy = client.ciParity[hintIndex];
 
         // Use offline pre-generated Enc(0) ciphertext, homomorphically added to ci_copy (avoid overhead of encrypt(0) during online phase)
@@ -587,6 +588,10 @@ int main(int argc, char *argv[])
     }
 
     // Detailed Performance Stats
+    const auto total_offline_time =
+        offline_comm_time + offline_client_compute_time;
+    const double amortization_query_count =
+        0.5 * LAMBDA * (1 << (Log2DBSize / 2));
     const size_t online_total_sent = online_main_bytes_sent + online_ot_bytes_sent;
     const size_t online_total_recv = online_main_bytes_recv + online_ot_bytes_recv;
     const size_t online_total_comm = online_total_sent + online_total_recv;
@@ -645,8 +650,15 @@ int main(int argc, char *argv[])
     cout << "    - Total sent: " << (double)online_total_sent / (1024 * 1024) << " MB" << endl;
     cout << "    - Total received: " << (double)online_total_recv / (1024 * 1024) << " MB" << endl;
     cout << "  Average communication per query (real total bytes): " << (double)online_total_comm / num_queries << " bytes" << endl;
-    cout << "  Average time per query (including amortized Offline): " << online_time + (double)offline_comm_time.count() / (0.5 * LAMBDA * (1 << (Log2DBSize / 2))) << " ms" << endl;
-    cout << "  Average communication per query (including amortized Offline): " << (double)online_total_comm / num_queries + (double)offline_comm_bytes / (0.5 * LAMBDA * (1 << (Log2DBSize / 2))) << " bytes" << endl;
+    cout << "  Average time per query (including amortized Offline): "
+         << online_time + static_cast<double>(total_offline_time.count()) /
+                               amortization_query_count
+         << " ms" << endl;
+    cout << "  Average communication per query (including amortized Offline): "
+         << static_cast<double>(online_total_comm) / num_queries +
+                static_cast<double>(offline_comm_bytes) /
+                    amortization_query_count
+         << " bytes" << endl;
     cout << "======================================\n"
          << endl;
 
@@ -662,10 +674,10 @@ int main(int argc, char *argv[])
         output_csv.open(options.OutputFile, ofstream::out | ofstream::app);
     }
 
-    // Calculate total offline time (communication time + client computation time)
-    auto total_offline_time = offline_comm_time + offline_client_compute_time;
-
-    double amortized_compute_time_per_query = ((double)total_offline_time.count()) / (0.5 * LAMBDA * (1 << (Log2DBSize / 2))) + online_time;
+    double amortized_compute_time_per_query =
+        static_cast<double>(total_offline_time.count()) /
+            amortization_query_count +
+        online_time;
 
     output_csv << "One server, " << Log2DBSize << ", " << EntrySize << ", "
                << num_queries << ", " << (double)total_offline_time.count() / 1000.0 << ", "

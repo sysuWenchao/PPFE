@@ -9,7 +9,7 @@ using namespace CryptoPP;
 using namespace troy;
 // N is supported up to 2^32. Allows us to use uint16_t to store a single offset within partition
 template <class PRF>
-Client<PRF>::Client(uint32_t LogN, uint32_t EntryB) : prf(AES_KEY)
+Client<PRF>::Client(uint32_t LogN, uint32_t EntryB) : prf(GeneratePrfKey())
 {
 	assert(LogN < 32);
 	assert(EntryB >= 8);
@@ -118,9 +118,12 @@ const troy::Ciphertext& OneSVClient::getNextEncZero()
 	{
 		throw std::runtime_error("Enc(0) cache is empty: Please call precomputeEncZeros() in Offline phase first");
 	}
-	// Loop reuse: avoid crash due to number of queries exceeding pre-generated count
-	const size_t idx = encZeroNext++ % encZeroCache.size();
-	return encZeroCache[idx];
+	if (encZeroNext >= encZeroCache.size())
+	{
+		throw std::runtime_error(
+			"Enc(0) cache exhausted: ciphertext randomizers must never be reused");
+	}
+	return encZeroCache[encZeroNext++];
 }
 
 void OneSVClient::Offline(OneSVServer &server, BatchEncoder &encoder, Encryptor &encryptor, Evaluator &evaluator)
@@ -398,14 +401,6 @@ void OneSVClient::Offline(OneSVServer &server, BatchEncoder &encoder, Encryptor 
 	std::cout << "Done" << endl;
 }
 */
-uint64_t getSecureRandom64()
-{
-	std::ifstream urandom("/dev/urandom", std::ios::in | std::ios::binary);
-	uint64_t number;
-	urandom.read(reinterpret_cast<char *>(&number), sizeof(number));
-	return number;
-}
-
 void OneSVClient::Online(OneSVServer &server, uint32_t query, uint64_t *result, troy::BatchEncoder &encoder, troy::Encryptor &encryptor, troy::Evaluator &evaluator)
 {
 	assert(query <= N);
@@ -422,7 +417,7 @@ void OneSVClient::Online(OneSVServer &server, uint32_t query, uint64_t *result, 
 	uint32_t hintID = HintID[hintIndex];
 	uint32_t cutoff = SelectCutoff[hintIndex]; // Median
 	// Randomize the selector bit that is sent to the server.
-	bool shouldFlip = rand() & 1;
+	bool shouldFlip = SecureRandomBit();
 
 	if (hintID > M)
 	{
@@ -459,7 +454,7 @@ void OneSVClient::Online(OneSVServer &server, uint32_t query, uint64_t *result, 
 			Svec[part] = NextDummyIdx() & (PartSize - 1);
 		}
 	}
-	uint64_t rando = getSecureRandom64() % plainModulus; // Get random value
+	uint64_t rando = SecureRandomUint64Below(plainModulus);
 	std::vector<uint64_t> ran(PartSize, 0);
 	ran[PartSize - 1] = rando;
 	troy::Plaintext ra = encoder.encode_polynomial_new(ran);

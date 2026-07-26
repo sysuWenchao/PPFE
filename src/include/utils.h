@@ -6,12 +6,46 @@
 #include "cryptopp/files.h"
 #include "cryptopp/osrng.h"
 #include <cassert>
+#include <cstdint>
+#include <stdexcept>
+#include <string>
 
-#define AES_KEY "1234567812345678"
 #define LAMBDA 30
+
+// Protocol parameters from Table 2. Keeping these values in one place prevents
+// the client, server, tests, and documentation from silently diverging.
+constexpr uint32_t PPFE_COEFF_MODULUS_BITS = 54;
+constexpr uint32_t PPFE_PLAIN_MODULUS_BITS = 20;
+constexpr uint32_t PPFE_ANSWER_NOISE_SIGMA_BITS = 22;
+constexpr uint64_t PPFE_ANSWER_NOISE_SIGMA =
+    uint64_t{1} << PPFE_ANSWER_NOISE_SIGMA_BITS;
+constexpr uint32_t PPFE_MIN_POLY_MODULUS_DEGREE = 2048;
+constexpr uint32_t PPFE_MAX_POLY_MODULUS_DEGREE = 32768;
+
+static_assert(PPFE_ANSWER_NOISE_SIGMA_BITS < PPFE_COEFF_MODULUS_BITS,
+              "answer noise must fit in the ciphertext modulus");
 
 using namespace std;
 using namespace CryptoPP;
+
+// OS-backed cryptographic randomness. SecureRandomUint64Below uses rejection
+// sampling, so every value in [0, upper_bound) has the same probability.
+std::string GeneratePrfKey();
+uint64_t SecureRandomUint64();
+uint64_t SecureRandomUint64Below(uint64_t upper_bound);
+bool SecureRandomBit();
+int64_t SampleAnswerNoise();
+uint64_t AddSignedMod(uint64_t value, int64_t delta, uint64_t modulus);
+
+// Throws std::invalid_argument when runtime HE parameters do not match the
+// protocol constants above.
+void ValidateProtocolParameters(uint32_t coeff_modulus_bits,
+                                uint32_t plain_modulus_bits,
+                                uint64_t coeff_modulus,
+                                uint64_t plain_modulus);
+uint32_t SelectPolyModulusDegree(uint32_t log_db_size);
+void ValidatePolyModulusDegree(uint32_t log_db_size,
+                               uint32_t poly_modulus_degree);
 
 // PRF across partition ID. 
 // A single PRF call generates the values of v for 4 consecutive partition numbers for a single hintID and the values of r for 8 consecutive partition numbers for a single hintID, packed in 128 bits.
@@ -24,7 +58,9 @@ class PRFPartitionID{
   }
   void evaluate(uint8_t *out, uint32_t word1, uint32_t word2, uint32_t word3){
     uint32_t prfIn [4] = {word1, (word3 << 16) | word2};
-      enc_.ProcessData(out, (uint8_t*) prfIn, 16);
+    enc_.ProcessBlock(
+        reinterpret_cast<const CryptoPP::byte *>(prfIn),
+        reinterpret_cast<CryptoPP::byte *>(out));
   }
 
   // Returns an indicator bit given a partition number, hint ID, and cutoff value for the hintID.
@@ -52,8 +88,8 @@ class PRFPartitionID{
   }
 
   private:
-  // AES-128
-	ECB_Mode< AES >::Encryption enc_;
+  // One AES-128 block is used directly as the PRF; no ECB message mode.
+	AES::Encryption enc_;
 };
 
 
@@ -68,7 +104,9 @@ class PRFHintID{
   }
   void evaluate(uint8_t *out, uint32_t word1, uint32_t word2, uint32_t word3){
     uint32_t prfIn [4] = {word1, (word3 << 16) | word2};
-      enc_.ProcessData(out, (uint8_t*) prfIn, 16);
+    enc_.ProcessBlock(
+        reinterpret_cast<const CryptoPP::byte *>(prfIn),
+        reinterpret_cast<CryptoPP::byte *>(out));
   }
 
   // Returns an indicator bit given a partition number, hint ID, and cutoff value for the hintID.
@@ -89,8 +127,8 @@ class PRFHintID{
 
 
   private:
-  // AES-128
-	ECB_Mode< AES >::Encryption enc_;
+  // One AES-128 block is used directly as the PRF; no ECB message mode.
+	AES::Encryption enc_;
 };
 
 

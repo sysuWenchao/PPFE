@@ -24,8 +24,11 @@ RESULTS_DIR="${RESULTS_DIR:-$SCRIPT_DIR/test_results}"
 SERVER_CPU_CORE=0  # Server bound to CPU core 0
 CLIENT_CPU_CORE=1  # Client bound to CPU core 1
 
-# Set library path
-export LD_LIBRARY_PATH="$SCRIPT_DIR/encryption:/usr/local/cuda/lib64:/usr/local/lib${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}"
+# Configurable dependency locations. These defaults match the README but can be
+# overridden for nonstandard CUDA or libOTe installations.
+CUDA_HOME="${CUDA_HOME:-/usr/local/cuda}"
+OT_PREFIX="${OT_PREFIX:-/usr/local}"
+export LD_LIBRARY_PATH="$SCRIPT_DIR/encryption:$CUDA_HOME/lib64:$OT_PREFIX/lib${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}"
 
 # Database size parameters (Log2DBSize)
 read -r -a DB_SIZES <<< "${DB_SIZES:-10 12 14 16 18 20 22 24}"
@@ -175,7 +178,9 @@ start_server() {
     local logfile=$4
     
     echo -e "${BLUE}Starting server in server_ns...${NC}"
-    ip netns exec server_ns taskset -c ${SERVER_CPU_CORE} bash -c "export LD_LIBRARY_PATH=${LD_LIBRARY_PATH}; ./build/s3pir_server $log2dbsize $entrysize $port" > "$logfile" 2>&1 &
+    ip netns exec server_ns env LD_LIBRARY_PATH="$LD_LIBRARY_PATH" \
+        taskset -c "$SERVER_CPU_CORE" ./build/s3pir_server \
+        "$log2dbsize" "$entrysize" "$port" > "$logfile" 2>&1 &
     SERVER_PID=$!
     
     echo -e "${YELLOW}Waiting for server to be ready...${NC}"
@@ -204,8 +209,17 @@ start_server() {
 stop_server() {
     if [ ! -z "$SERVER_PID" ]; then
         echo -e "${BLUE}Stopping server (PID: $SERVER_PID)...${NC}"
-        kill $SERVER_PID 2>/dev/null
-        wait $SERVER_PID 2>/dev/null
+        # The client sends an end signal. Give the server time to flush its
+        # aggregate online-computation timing before using a forced stop.
+        local attempts=0
+        while kill -0 "$SERVER_PID" 2>/dev/null && [ "$attempts" -lt 50 ]; do
+            sleep 0.1
+            attempts=$((attempts + 1))
+        done
+        if kill -0 "$SERVER_PID" 2>/dev/null; then
+            kill "$SERVER_PID" 2>/dev/null
+        fi
+        wait "$SERVER_PID" 2>/dev/null
         SERVER_PID=""
     fi
 }
@@ -217,7 +231,9 @@ run_client() {
     local logfile=$4
     
     echo -e "${BLUE}Running client in client_ns...${NC}"
-    ip netns exec client_ns taskset -c ${CLIENT_CPU_CORE} bash -c "export LD_LIBRARY_PATH=${LD_LIBRARY_PATH}; ./build/s3pir_client $server_ip $port $output_file" > "$logfile" 2>&1
+    ip netns exec client_ns env LD_LIBRARY_PATH="$LD_LIBRARY_PATH" \
+        taskset -c "$CLIENT_CPU_CORE" ./build/s3pir_client \
+        "$server_ip" "$port" "$output_file" > "$logfile" 2>&1
     
     if [ $? -eq 0 ]; then
         echo -e "${GREEN}✓ Client finished successfully${NC}"
