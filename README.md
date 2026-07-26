@@ -4,18 +4,6 @@ This repository contains the CUDA/C++ implementation of **Preprocessed
 Private Function Evaluation: Achieving Sublinear Online Complexity for Lookup
 Tables**.
 
-## Artifact scope
-
-The repository reproduces the PPFE implementation and its LAN/WAN experiments.
-It does **not** contain the FABLE, SP-LUT, FLORAM, or 2P-DUORAM source trees,
-their raw measurements, or the paper's figure-generation scripts. Consequently,
-the cross-system speedup claims cannot be independently regenerated from this
-repository alone. `run_tests.sh` covers PPFE database sizes from \(2^{10}\)
-through \(2^{24}\).
-
-The benchmark uses a deterministic synthetic database and deterministic query
-indices so that it can check every returned value. It is an artifact benchmark,
-not a production deployment.
 
 ## Tested environment
 
